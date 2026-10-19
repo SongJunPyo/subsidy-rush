@@ -1,0 +1,10 @@
+# 개발용: infra/docker-compose.yml의 MySQL·Redis에 붙는다
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/subsidy
+    username: subsidy
+    password: subsidy
+  data:
+    redis:
+      host: localhost
+      port: 6379

@@ -1,0 +1,10 @@
+# 부하 측정용. /admin/* API(SPEC 3.6)는 이 프로필에서만 활성화한다 (Phase 2)
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/subsidy
+    username: subsidy
+    password: subsidy
+  data:
+    redis:
+      host: localhost
+      port: 6379

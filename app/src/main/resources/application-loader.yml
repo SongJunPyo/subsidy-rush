@@ -1,0 +1,8 @@
+# 명단 적재용 (SPEC 9.4, Phase 1). 웹 서버 없이 적재만 하고 종료한다
+spring:
+  main:
+    web-application-type: none
+  datasource:
+    url: jdbc:mysql://localhost:3306/subsidy
+    username: subsidy
+    password: subsidy

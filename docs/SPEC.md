@@ -10,10 +10,10 @@
 
 | 항목 | 값 | 비고 |
 | --- | --- | --- |
-| 빌드 | Gradle Kotlin DSL, 멀티모듈(`app`, `mock-external`) | `[결정 필요]` Maven으로 바꿀 수 있음 |
-| 루트 패키지 | `com.example.subsidy` | `[결정 필요]` 본인 GitHub ID 기반 권장 (예: `io.github.<id>.subsidy`) |
+| 빌드 | Gradle Kotlin DSL, 멀티모듈(`app`, `mock-external`) | 결정됨 |
+| 루트 패키지 | `io.github.songjunpyo.subsidy` (mock-external은 `.mock`) | 결정됨 (GitHub ID 기반) |
 | Java | 21 | |
-| Spring Boot | 프로젝트 생성 시점의 최신 GA 버전을 `build.gradle.kts`에 고정하고 여기에 적는다: `____` | `[결정 필요]` Resilience4j·Testcontainers 호환이 안 되면 바로 아래 마이너 버전 |
+| Spring Boot | 프로젝트 생성 시점의 최신 GA 버전을 `build.gradle.kts`에 고정하고 여기에 적는다: `4.1.1` (Gradle 9.8.1) | 결정됨 (2026-10-19). Resilience4j는 `resilience4j-spring-boot4` 2.4.0 사용 가능 확인 |
 | DB | MySQL 8.4, InnoDB, utf8mb4 | |
 | 캐시·대기열 | Redis 7.x, 클라이언트 Lettuce(Spring 기본) | |
 | 마이그레이션 | Flyway (`flyway-mysql` 모듈 포함) | |
