@@ -1,0 +1,26 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # 개발 중에는 앱을 호스트에서 bootRun으로 실행한다 (SPEC 0절)
+  - job_name: app
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8080"]
+
+  - job_name: mysql
+    static_configs:
+      - targets: ["mysqld-exporter:9104"]
+
+  - job_name: redis
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]

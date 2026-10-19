@@ -6,6 +6,9 @@ spring:
 
 server:
   port: 8080
+  tomcat:
+    mbeanregistry:
+      enabled: true  # tomcat_threads_* 지표 노출 (Phase 7 스레드 고갈 관찰용)
 
 management:
   endpoints:

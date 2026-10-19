@@ -19,6 +19,7 @@ services:
       - --long-query-time=0.2
     volumes:
       - mysql-data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
       interval: 5s
@@ -38,5 +39,72 @@ services:
       timeout: 3s
       retries: 20
 
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    container_name: subsidy-prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-remote-write-receiver
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  mysqld-exporter:
+    image: prom/mysqld-exporter:v0.20.0
+    container_name: subsidy-mysqld-exporter
+    ports:
+      - "9104:9104"
+    command:
+      - --config.my-cnf=/etc/mysqld-exporter/my.cnf
+    volumes:
+      - ./mysqld-exporter/my.cnf:/etc/mysqld-exporter/my.cnf:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.93.0
+    container_name: subsidy-redis-exporter
+    ports:
+      - "9121:9121"
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # Docker Desktop(macOS)에서는 맥 본체가 아니라 Docker VM의 지표가 수집된다
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    container_name: subsidy-node-exporter
+    ports:
+      - "9100:9100"
+    command:
+      - --path.rootfs=/host
+    pid: host
+    volumes:
+      - /:/host:ro
+
+  grafana:
+    image: grafana/grafana:13.2.4
+    container_name: subsidy-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
 volumes:
   mysql-data:
+  prometheus-data:
+  grafana-data:
