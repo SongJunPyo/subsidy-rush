@@ -52,7 +52,7 @@
 
 | 서비스 | 포트 | 비고 |
 | --- | --- | --- |
-| app | 8080 | |
+| app | 8082 | 8080은 다른 프로젝트가 사용해서 변경 (2026-10-20) |
 | mock-external | 8081 | 앱과 별도 프로세스 (지연이 앱 스레드를 공유하지 않게) |
 | MySQL | 3306 | `local_infile=ON`, `slow_query_log=ON`, `long_query_time=0.2` |
 | Redis | 6379 | Phase 9 전까지 영속화 끔 |

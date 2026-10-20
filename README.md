@@ -22,7 +22,7 @@
 ## 아키텍처
 
 ```
-[k6] ──HTTP──> [app :8080] ──┬──> [MySQL 8.4]
+[k6] ──HTTP──> [app :8082] ──┬──> [MySQL 8.4]
                              ├──> [Redis 7]
                              └──> [mock-external :8081]
 [Prometheus :9090] <── app, mysqld_exporter, redis_exporter, node_exporter, k6(remote write)
@@ -39,7 +39,7 @@ Java 21, Spring Boot 4.1.1, Gradle Kotlin DSL 멀티모듈 / MySQL 8.4, Redis 7.
 
 ```bash
 docker compose -f infra/docker-compose.yml up -d   # 인프라 (MySQL, Redis, Prometheus, Grafana, exporter)
-./gradlew :app:bootRun                             # 앱 (:8080, 프로필 local)
+./gradlew :app:bootRun                             # 앱 (:8082, 프로필 local)
 ./gradlew :mock-external:bootRun                   # 가짜 외부 API (:8081)
 ./gradlew test                                     # 테스트 (Testcontainers, Docker 필요)
 ```
@@ -48,7 +48,7 @@ docker compose -f infra/docker-compose.yml up -d   # 인프라 (MySQL, Redis, Pr
 | --- | --- |
 | Grafana | http://localhost:3000 (admin / admin), 대시보드 `Subsidy Rush` |
 | Prometheus | http://localhost:9090 |
-| 앱 지표 | http://localhost:8080/actuator/prometheus |
+| 앱 지표 | http://localhost:8082/actuator/prometheus |
 
 ## 설계상 단순화한 부분
 
