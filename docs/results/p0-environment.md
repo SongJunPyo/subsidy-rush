@@ -43,7 +43,7 @@ SPEC에 없어서 정한 것:
 | Tomcat MBean 등록 | 켬 (`server.tomcat.mbeanregistry.enabled`) | `tomcat_threads_*` 지표가 있어야 P7 스레드 고갈을 관찰할 수 있음 |
 | `loader` 프로필 | 웹 서버 없이 실행 | 적재만 하고 끝나는 용도 |
 | mock-external 스크랩 | 하지 않음 | SPEC 2절 수집 대상에 없음. 필요해지면 P7에서 추가 |
-| 로컬 계정 | 평문 (`subsidy`, `exporter`, Grafana `admin`) | 로컬 개발용 |
+| 로컬 계정 | ~~평문 (`subsidy`, `exporter`, Grafana `admin`)~~ | P1 중(2026-10-20) 비밀번호를 `infra/.env`(커밋 안 함)로 분리하고 새 값으로 교체. 공개 저장소에 평문이 남아 있었기 때문 |
 
 **의도적으로 그대로 둔 것**: HikariCP 풀 크기는 기본값 10. 병목 4(P6)의 기준선 조건이다.
 
@@ -87,7 +87,7 @@ SPEC 8절 행 순서대로 7개 행, 패널 28개.
 | # | 문제 | 원인 | 해결 |
 | --- | --- | --- | --- |
 | 1 | CLAUDE.md가 SPEC.md와 함께 `docs/`로 옮겨짐 | 수동 이동 | 루트로 되돌림. Claude Code는 루트의 CLAUDE.md만 자동으로 읽음 |
-| 2 | 커밋 작성자가 `...@songjunpyoui-MacBookAir.local`로 기록되어 잔디에 반영 안 됨 | git `user.email` 미설정 | 전역 설정 후 기존 커밋 작성자를 다시 쓰고 `--force-with-lease`로 push (파일 내용은 그대로임을 tree 해시로 확인) |
+| 2 | 커밋 작성자가 `...@<호스트명>.local`로 기록되어 잔디에 반영 안 됨 | git `user.email` 미설정 | 전역 설정 후 기존 커밋 작성자를 다시 쓰고 `--force-with-lease`로 push (파일 내용은 그대로임을 tree 해시로 확인) |
 | 3 | MySQL 컨테이너 시작 실패 `bind: address already in use` | Homebrew MySQL이 로그인 시 자동 실행되며 3306을 점유 | `brew services stop mysql`. 다시 쓸 때는 `brew services start mysql` (이 프로젝트와 동시 실행 불가) |
 | 4 | node-exporter 시작 실패 `path / is mounted on / but it is not a shared or slave mount` | Docker Desktop(macOS)이 `rslave` 마운트 전파를 지원하지 않음 | `/:/host:ro`로 변경. GCP(Linux) 이전 시 `rslave` 복원 |
 | 5 | mysqld_exporter 계정이 자동으로 만들어지지 않음 | `docker-entrypoint-initdb.d` 스크립트는 볼륨이 처음 만들어질 때만 실행되는데, 볼륨이 이미 있었음 | 같은 스크립트를 수동으로 1회 실행 (`IF NOT EXISTS`라 재실행 안전) |

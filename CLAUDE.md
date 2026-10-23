@@ -8,7 +8,7 @@
 
 ## 현재 단계
 
-> **Phase 0 — 환경 구축** (끝나면 사람이 이 줄을 다음 Phase로 바꾼다)
+> **Phase 1** (끝나면 사람이 이 줄을 다음 Phase로 바꾼다)
 
 현재 단계에 해당하는 작업만 한다. 다음 단계 작업은 요청받기 전까지 하지 않는다.
 
@@ -30,6 +30,7 @@
 - Java 21, Spring Boot (버전은 SPEC.md "결정 사항"에 고정), Gradle Kotlin DSL 멀티모듈
 - MySQL 8.4, Redis 7.x, Flyway
 - JPA(조회·단건 처리) + JdbcTemplate(대량 처리·원자적 UPDATE)
+- MyBatis: P1 적재 비교용. 이후 사용 범위는 P2에서 정한다
 - Resilience4j, Spring Batch(Phase 9부터)
 - 테스트: JUnit 5, Testcontainers(MySQL, Redis), AssertJ
 - 부하: k6 / 관측: Micrometer, Prometheus, Grafana, mysqld_exporter, redis_exporter, node_exporter
@@ -53,7 +54,9 @@ docs/             SPEC.md, DESIGN.md, results/
 docker compose -f infra/docker-compose.yml up -d      # 전체 인프라
 ./gradlew :app:bootRun                               # 앱 실행
 ./gradlew test                                       # 전체 테스트 (Testcontainers)
-python tools/datagen/generate.py --rows 1000000      # 데이터 생성
+tools/datagen/.venv/bin/python tools/datagen/generate.py --rows 1000000   # 데이터 생성 → data/
+tools/datagen/.venv/bin/python -m unittest discover tools/datagen         # 생성 스크립트 테스트
+./gradlew :app:bootRun --args="--spring.profiles.active=loader --mode=jdbc --file=$PWD/data/eligible_person.csv"  # 명단 적재 (mode: jpa|jdbc|mybatis-batch|mybatis-foreach|load-data)
 k6 run load-test/<scenario>.js                       # 부하 테스트
 ```
 

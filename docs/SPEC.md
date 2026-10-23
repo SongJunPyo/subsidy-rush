@@ -17,6 +17,7 @@
 | DB | MySQL 8.4, InnoDB, utf8mb4 | |
 | 캐시·대기열 | Redis 7.x, 클라이언트 Lettuce(Spring 기본) | |
 | 마이그레이션 | Flyway (`flyway-mysql` 모듈 포함) | |
+| SQL 매퍼 | MyBatis (`mybatis-spring-boot-starter` 4.1.0) | P1 적재 비교용으로 도입 (2026-10-20 결정). 이후 사용 범위는 P2에서 계층 구조와 함께 정한다 |
 | 실행 방식 | 개발 중에는 인프라만 Docker Compose, 앱은 `bootRun` | 측정 시에는 앱도 컨테이너로 (Phase 8부터 GCP) |
 | 인증 | 생략. 클라이언트가 `ciHash`를 요청 본문으로 보낸다 | 실제로는 본인인증 후 서버가 CI를 얻는다. README에 명시 |
 | 금액 | 원 단위 `long` / `BIGINT` | 소수점 없음 |
@@ -47,6 +48,23 @@
 [Grafana] ──> Prometheus
 [대사 배치 (Phase 9~)] ──> MySQL, Redis
 ```
+
+### 금융권 시스템 구조와의 대응 (2026-10-23 결정)
+
+은행 현직자에게 들은 일반적인 흐름(채널 → MCA → 계정계 → FEP → 외부기관 → FEP → 계정계 → MCA → 채널)을 이 프로젝트의 구성요소에 대응시킨다. 은행·사업마다 세부가 다르므로 **일반 구조의 단순화**로 다룬다.
+
+| 금융권 구조 | 역할 | 이 프로젝트에서 해당하는 부분 | 관련 병목 |
+| --- | --- | --- | --- |
+| 채널 (앱·웹) | 사용자 요청의 출발점 | k6 | |
+| MCA | 여러 채널의 요청을 받아 계정계로 넘기는 관문, 유입 통제 | Nginx `limit_req` + 대기열 (P8) | P8 오픈 스파이크 |
+| 계정계 | 돈과 원장을 다루는 핵심 시스템, 서비스 로직 | app + MySQL (+ Redis) | P3~P6 중복·예산·풀스캔·락 경합 |
+| FEP | 외부기관과 전문을 주고받는 대외 관문 | app의 외부 호출 부분 (타임아웃·서킷브레이커·벌크헤드) | P7 외부 API 지연 |
+| 외부기관 (정부 등) | 자격·계좌 검증, 지급 처리 | mock-external | P7 장애 주입 |
+| 대외기관과의 대사 | 양쪽 기록을 맞춰 보는 작업 | 대사 배치 (P9) | P9 장애 중 정합성 |
+
+**MCA·FEP를 별도 서버로 구현하지 않는다.** 직접 만든 MCA·FEP는 실제 상용 미들웨어의 특성을 갖지 않아 측정해도 의미가 약하고, 한 머신에 서비스가 늘면 측정값이 섞이며, 일정도 크게 늘어난다. 대신 이 구조에서 가치가 큰 두 가지를 흡수한다: 응답 미수신 시나리오(7절, P7·P9)와 외부 구간 지연 지표(8절).
+
+참고로 대외기관 연계에는 신청마다 묻는 **실시간 방식**과 명단을 미리 받는 **일괄(파일) 방식**이 있다. 이 프로젝트는 둘을 섞는다: 대상자 명단은 미리 적재(P1)하고, 본인인증·계좌 검증은 신청마다 실시간으로 호출한다.
 
 ### 로컬 포트
 
@@ -166,7 +184,9 @@ Phase 8부터 `X-Admission-Token` 필수, 없거나 만료되면 403 `ADMISSION_
 
 `eligible_person` 데이터는 Flyway가 아니라 적재 도구(Phase 1)로 넣는다. FK는 두지 않는다 (FK가 자동으로 인덱스를 만들어 병목 실험 조건이 흐려지므로). 이 결정은 README에 적는다.
 
-### V1__baseline.sql (Phase 2)
+### V1__baseline.sql (Phase 1)
+
+적재기(9.4)가 `eligible_person` 테이블을 필요로 해서 P2에서 P1로 당겼다 (2026-10-20 결정). DDL은 그대로다.
 
 ```sql
 CREATE TABLE eligible_person (
@@ -280,6 +300,8 @@ return redis.call('DECRBY', KEYS[1], amount)    -- 차감 후 잔액
 
 기본값은 지연 0, 실패율 0. 지연은 요청 스레드에서 sleep으로 만든다 (mock 자체가 병목이 되지 않게 Tomcat 스레드 수를 넉넉히 설정).
 
+**응답 미수신 모드 (P7·P9에서 추가)**: 외부기관은 요청을 처리해 기록했는데 응답이 클라이언트 타임아웃보다 늦게 도착해, 호출한 쪽은 결과를 모르는 상황을 만든다. mock에 "처리는 기록하고 응답만 늦추는" 장애 설정과, 거래 ID로 처리 결과를 다시 묻는 재조회 API를 추가한다. API 모양과 거래 ID 규칙은 P7 시작 시 설계안을 제안하고 승인받은 뒤 구현한다.
+
 ---
 
 ## 8. 메트릭
@@ -292,6 +314,9 @@ return redis.call('DECRBY', KEYS[1], amount)    -- 차감 후 잔액
 | `subsidy.budget.remaining` | Gauge | `budget_id` | `subsidy_budget_remaining` |
 | `subsidy.queue.waiting` | Gauge | | `subsidy_queue_waiting` |
 | `subsidy.reconciliation.mismatch` | Gauge | `check` | `subsidy_reconciliation_mismatch` |
+| `subsidy.external.call` | Timer (히스토그램) | `target` = identity, account (P9부터 지급 호출 추가), `outcome` = success, failure, timeout | `subsidy_external_call_seconds_*` |
+
+`subsidy.external.call`은 외부 호출 구간만 잰다(FEP 구간에 해당). 전체 응답시간(`http_server_requests`)과 나란히 보면 느려진 곳이 우리 쪽인지 외부기관 쪽인지 구분할 수 있다. P2에서 외부 호출을 처음 만들 때 도입하고, Grafana API(RED) 행에 패널을 추가한다.
 
 Grafana 대시보드(`infra/grafana/dashboards/subsidy.json`) 행 순서: 비즈니스 → API(RED) → JVM·HikariCP·Tomcat·서킷브레이커 → MySQL → Redis → 서버 → k6.
 
@@ -353,15 +378,19 @@ Grafana 대시보드(`infra/grafana/dashboards/subsidy.json`) 행 순서: 비즈
 
 대상군·지역별 인원, 총 지원금 수요(원), 권장 총예산(수요의 30%, 100만 원 단위 내림).
 
+총 지원금 수요는 **`participants.csv` 중 `eligible=true`인 사람의 `support_amount` 합**이다 (2026-10-20 결정). 명단 전체 합을 쓰면 예산이 부하 테스트 중에 소진되지 않아 선착순 시나리오가 성립하지 않는다.
+
 ### 9.4 적재 (Phase 1)
 
-`app`의 `loader` 프로필로 실행: `--mode=jpa|jdbc|load-data`
+`app`의 `loader` 프로필로 실행: `--mode=jpa|jdbc|mybatis-batch|mybatis-foreach|load-data`
 
 1. `jpa`: Spring Data `saveAll()`. `person_id`를 직접 넣는 엔티티라 `save()`가 INSERT 전에 SELECT를 하는 현상이 생기는데, 그대로 두고 관찰해 결과에 적는다
 2. `jdbc`: `JdbcTemplate.batchUpdate`, 배치 크기 1000, JDBC URL에 `rewriteBatchedStatements=true`
-3. `load-data`: `LOAD DATA LOCAL INFILE` (JDBC URL `allowLoadLocalInfile=true`, 서버 `local_infile=ON`)
+3. `mybatis-batch`: MyBatis `ExecutorType.BATCH`, 1000건마다 `flushStatements()` (`rewriteBatchedStatements=true` 동일)
+4. `mybatis-foreach`: MyBatis `<foreach>`로 1000건을 `INSERT ... VALUES (...), (...)` 한 문장으로 생성
+5. `load-data`: `LOAD DATA LOCAL INFILE` (JDBC URL `allowLoadLocalInfile=true`, 서버 `local_infile=ON`)
 
-각 방식 전에 테이블을 비우고 소요 시간을 잰다. `jpa`가 너무 오래 걸리면 10만 건으로 재고 그렇게 했다고 명시한다 (100만 건으로 환산한 추정값은 쓰지 않는다).
+각 방식 전에 테이블을 비우고 소요 시간을 잰다. 각 방식은 100만 건으로 3회 측정해 중앙값을 기록한다. `jpa`는 먼저 10만 건으로 1회 재 보고, 100만 건 1회가 10분을 넘을 것으로 보이면 10만 건 3회로 기록하고 그렇게 했다고 명시한다 (100만 건으로 환산한 추정값은 쓰지 않는다).
 
 ---
 
@@ -452,19 +481,21 @@ Grafana 캡처와 함께
 
 ### P1 — 데이터 생성·적재 (2주차)
 
-- 9절의 생성 스크립트, `loader` 프로필 3가지 적재 방식
+- 9절의 생성 스크립트, `loader` 프로필 5가지 적재 방식
+- Flyway V1 (4절, P2에서 당겨옴)
 - `docs/results/p1-loading.md`
 
-**완료 조건**: `eligible_person` 1,000,000건 / CSV 행 수와 DB 행 수 일치 / 3방식 소요 시간 기록
+**완료 조건**: `eligible_person` 1,000,000건 / CSV 행 수와 DB 행 수 일치 / 5방식 소요 시간 기록
 
 ### P2 — 기준선 (2주차)
 
 - 3절 API(대기열 제외), 3.6 관리자 API, 5절 흐름을 결함 포함 그대로
-- Flyway V1, mock-external 7절
+- mock-external 7절 (Flyway V1은 P1으로 이동)
 - `smoke.js`, `load.js`, `lib/common.js`
 - 단일 스레드 통합 테스트(정상 신청, 명단 없음, 재신청 거절, 검증 실패)
 - **재현 테스트**: 동시성 테스트로 중복 승인과 예산 초과가 실제로 발생함을 확인. 불변식을 검증하는 이 테스트들은 지금은 실패하므로 `@Tag("known-issue")`를 붙여 기본 테스트에서 제외하고, 해당 Phase에서 태그를 뗀다
 - `load.js`로 한계 TPS를 찾아 기록 (이후 목표 수치의 기준)
+- 외부 호출 구간 지표 `subsidy.external.call`(8절)과 Grafana 패널
 
 **완료 조건**: smoke 통과 / 단일 스레드 테스트 통과 / 재현 테스트에서 중복·초과가 실제로 관찰됨 / `git tag baseline`
 
@@ -508,8 +539,10 @@ Grafana 캡처와 함께
 - 재현: mock에 지연 2000ms·실패율 30% 주입 → Tomcat 스레드 고갈, 상관없는 `GET /budget`까지 느려지는 것 확인
 - 해결 단계별 적용·측정: 타임아웃 → 서킷브레이커 → 벌크헤드 → 외부 호출을 DB 트랜잭션 밖으로 이동. 타임아웃 값은 측정으로 정한다
 - (선택) 검증을 접수 후 비동기 처리로 분리 — 하려면 상태 흐름 변경을 먼저 제안할 것
+- 구간별 지연: 장애 주입 중 외부 구간(`subsidy_external_call_seconds`)과 전체 응답시간의 p95를 나란히 기록한다
+- 응답 미수신 (조회성 호출): 7절의 응답 미수신 모드로 타임아웃 뒤 mock 쪽은 처리된 상황을 만든다. 본인인증·계좌 검증은 상태를 바꾸지 않는 조회라 다시 호출해도 안전함을 확인한다
 
-**완료 조건**: 장애 주입 중 `GET /budget` p95가 장애 없을 때와 비슷한 수준(수치 기록) / 서킷 open 시 503 `EXTERNAL_UNAVAILABLE`이 빠르게 반환 / 태그
+**완료 조건**: 장애 주입 중 `GET /budget` p95가 장애 없을 때와 비슷한 수준(수치 기록) / 서킷 open 시 503 `EXTERNAL_UNAVAILABLE`이 빠르게 반환 / 외부 구간 p95와 전체 p95를 함께 기록 / 태그
 
 ### P8 — 병목 6: 오픈 스파이크 + GCP 이전 (6주차)
 
@@ -527,8 +560,9 @@ Grafana 캡처와 함께
   - Redis 차감 보상: 실패 시 `INCRBY`, 보상하지 못한 건은 대사가 복구. 차감 근거를 남기는 방식은 설계안을 먼저 제안하고 승인받은 뒤 구현
   - Redis 영속화(AOF) 켠 경우와 끈 경우 비교
   - Spring Batch 대사 작업: 11.2 불변식 계산 → `subsidy_reconciliation_mismatch` 갱신 → 불일치 보고. 자동 보정은 설정으로 켜고 끌 수 있게, 보정 내역은 별도 기록
+  - 응답 미수신 (처리성 호출): 지급처럼 상태를 바꾸는 외부 호출이 타임아웃되면 "실패"로 단정하지 않고 "결과 미확인"으로 둔 뒤, 재조회 API로 확정한다. 확정하지 못한 건은 대사가 찾아 처리한다. 지급을 외부 호출로 두는 범위와 상태 흐름은 설계안을 먼저 제안하고 승인받은 뒤 구현
 
-**완료 조건**: 장애 주입 후 대사가 불일치를 탐지 / 복구 후 모든 불변식 0 / 태그
+**완료 조건**: 장애 주입 후 대사가 불일치를 탐지 / 복구 후 모든 불변식 0 / 응답 미수신 건이 재조회·대사로 확정되어 이중 지급·누락 0 / 태그
 
 ### P10 — 최종 측정·정리 (8주차)
 

@@ -13,7 +13,8 @@ public class TestcontainersConfiguration {
     @Bean
     @ServiceConnection
     MySQLContainer mysqlContainer() {
-        return new MySQLContainer(DockerImageName.parse("mysql:8.4"));
+        return new MySQLContainer(DockerImageName.parse("mysql:8.4"))
+                .withCommand("--local-infile=ON");  // load-data 적재 (SPEC 2절)
     }
 
     @Bean

@@ -29,13 +29,28 @@
 [Grafana :3000] ──> Prometheus
 ```
 
+## 금융권 시스템 구조와의 대응
+
+은행의 일반적인 흐름(채널 → MCA → 계정계 → FEP → 외부기관)을 이 프로젝트의 구성요소에 대응시켰습니다. 실제 구조는 은행·사업마다 다르며, 여기서는 일반 구조를 단순화했습니다.
+
+| 금융권 구조 | 역할 | 이 프로젝트에서 해당하는 부분 | 관련 병목 |
+| --- | --- | --- | --- |
+| 채널 (앱·웹) | 사용자 요청의 출발점 | k6 | |
+| MCA | 여러 채널의 요청을 받아 계정계로 넘기는 관문, 유입 통제 | Nginx `limit_req` + 대기열 (P8) | P8 오픈 스파이크 |
+| 계정계 | 돈과 원장을 다루는 핵심 시스템, 서비스 로직 | app + MySQL (+ Redis) | P3~P6 중복·예산·풀스캔·락 경합 |
+| FEP | 외부기관과 전문을 주고받는 대외 관문 | app의 외부 호출 부분 (타임아웃·서킷브레이커·벌크헤드) | P7 외부 API 지연 |
+| 외부기관 (정부 등) | 자격·계좌 검증, 지급 처리 | mock-external | P7 장애 주입 |
+| 대외기관과의 대사 | 양쪽 기록을 맞춰 보는 작업 | 대사 배치 (P9) | P9 장애 중 정합성 |
+
+MCA·FEP는 별도 서버로 만들지 않았습니다. 직접 만든 미들웨어는 실제 상용 제품의 특성을 갖지 않아 측정 의미가 약하고, 한 머신에서 구성요소가 늘면 측정값이 섞이기 때문입니다. 대신 대외 연계의 핵심 문제인 **응답 미수신**(외부기관은 처리했는데 응답을 못 받은 상황)과 **외부 구간 지연**을 해당 Phase(P7·P9)에서 다룹니다.
+
 ## 기술 스택
 
-Java 21, Spring Boot 4.1.1, Gradle Kotlin DSL 멀티모듈 / MySQL 8.4, Redis 7.4, Flyway / k6, Micrometer, Prometheus, Grafana
+Java 21, Spring Boot 4.1.1, Gradle Kotlin DSL 멀티모듈 / MySQL 8.4, Redis 7.4, Flyway, JPA·JdbcTemplate·MyBatis / k6, Micrometer, Prometheus, Grafana
 
 ## 실행 방법
 
-사전 준비: JDK 21, Docker, k6
+사전 준비: JDK 21, Docker, k6, 비밀번호 파일 (`cp infra/.env.example infra/.env` 후 값 채우기. 커밋하지 않음)
 
 ```bash
 docker compose -f infra/docker-compose.yml up -d   # 인프라 (MySQL, Redis, Prometheus, Grafana, exporter)
@@ -44,9 +59,17 @@ docker compose -f infra/docker-compose.yml up -d   # 인프라 (MySQL, Redis, Pr
 ./gradlew test                                     # 테스트 (Testcontainers, Docker 필요)
 ```
 
+가상 데이터 생성과 적재 (Python 3, 최초 1회 가상환경 준비):
+
+```bash
+python3 -m venv tools/datagen/.venv && tools/datagen/.venv/bin/pip install -r tools/datagen/requirements.txt
+tools/datagen/.venv/bin/python tools/datagen/generate.py --rows 1000000 --participants 120000 --seed 42 --out data/
+./gradlew :app:bootRun --args="--spring.profiles.active=loader --mode=load-data --file=$PWD/data/eligible_person.csv"
+```
+
 | 서비스 | 주소 |
 | --- | --- |
-| Grafana | http://localhost:3000 (admin / admin), 대시보드 `Subsidy Rush` |
+| Grafana | http://localhost:3000 (`admin` / `infra/.env`의 비밀번호), 대시보드 `Subsidy Rush` |
 | Prometheus | http://localhost:9090 |
 | 앱 지표 | http://localhost:8082/actuator/prometheus |
 

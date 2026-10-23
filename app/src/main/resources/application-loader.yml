@@ -1,8 +1,13 @@
-# 명단 적재용 (SPEC 9.4, Phase 1). 웹 서버 없이 적재만 하고 종료한다
+# 명단 적재용 (SPEC 9.4). 웹 서버 없이 적재만 하고 종료한다
 spring:
   main:
     web-application-type: none
   datasource:
     url: jdbc:mysql://localhost:3306/subsidy
     username: subsidy
-    password: subsidy
+    # password: SPRING_DATASOURCE_PASSWORD 환경변수 (bootRun이 infra/.env에서 넣는다)
+    hikari:
+      # JDBC URL 파라미터와 같은 Connector/J 속성. 테스트(Testcontainers URL)에도 똑같이 적용되도록 여기 둔다
+      data-source-properties:
+        rewriteBatchedStatements: true
+        allowLoadLocalInfile: true

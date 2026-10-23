@@ -2,6 +2,16 @@
 
 모든 명령은 프로젝트 루트(`subsidy-rush/`)에서 실행합니다.
 
+## 처음 한 번만: 비밀번호 파일 만들기
+
+비밀번호는 커밋하지 않는 `infra/.env`에 둡니다. 견본을 복사하고 값을 채웁니다.
+
+```bash
+cp infra/.env.example infra/.env   # 그다음 infra/.env를 열어 4개 값을 채운다
+```
+
+이 값들은 MySQL·Grafana 볼륨이 **처음 만들어질 때만** 적용됩니다. 나중에 바꾸려면 볼륨을 지우고 다시 만들어야 하며, 그러면 DB 데이터도 사라집니다(명단은 `load-data`로 1분 안에 다시 넣을 수 있습니다).
+
 ## 켜기
 
 1. **Docker Desktop 실행**: 메뉴 막대에 고래 아이콘이 보이면 준비된 상태입니다.
@@ -26,7 +36,7 @@ curl localhost:8082/actuator/health              # {"status":"UP"} 이면 정상
 
 | 화면 | 주소 |
 | --- | --- |
-| Grafana | http://localhost:3000/d/subsidy (admin / admin) |
+| Grafana | http://localhost:3000/d/subsidy (`admin` / `infra/.env`의 `GF_SECURITY_ADMIN_PASSWORD`) |
 | Prometheus 수집 대상 | http://localhost:9090/targets (5개 모두 UP) |
 
 ## 끄기
@@ -51,3 +61,5 @@ curl localhost:8082/actuator/health              # {"status":"UP"} 이면 정상
 | 앱 시작 실패 `Communications link failure` | MySQL 컨테이너가 꺼져 있음 | "켜기" 2번 실행 후 앱 재시작 |
 | 앱 시작 실패 `Port 8082 was already in use` | 앱이 이미 떠 있음 | `kill $(lsof -tiTCP:8082 -sTCP:LISTEN)` 후 재시작 |
 | Grafana 앱 패널이 비어 있음 | 앱이 꺼져 있음 | "켜기" 3번 |
+| `required variable ... infra/.env 필요` | `infra/.env`가 없음 | "처음 한 번만" 절 |
+| 앱 시작 실패 `Access denied for user 'subsidy'` | `infra/.env`의 `MYSQL_PASSWORD`가 볼륨을 만들 때 값과 다름 | 값을 되돌리거나 볼륨을 다시 만든다 |

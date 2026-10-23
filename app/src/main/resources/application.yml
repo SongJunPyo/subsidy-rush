@@ -10,6 +10,9 @@ server:
     mbeanregistry:
       enabled: true  # tomcat_threads_* 지표 노출 (Phase 7 스레드 고갈 관찰용)
 
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+
 management:
   endpoints:
     web:

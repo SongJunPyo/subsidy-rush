@@ -7,7 +7,7 @@ Phase별 작업 기록과 병목 측정 결과를 모아 두는 폴더입니다.
 | Phase | 내용 | 기록 | 상태 | 태그 |
 | --- | --- | --- | --- | --- |
 | P0 | 환경 구축 | [p0-environment.md](p0-environment.md) | ✅ 완료 (2026-10-19) | |
-| P1 | 데이터 생성·적재 | `p1-loading.md` | | |
+| P1 | 데이터 생성·적재 | [p1-loading.md](p1-loading.md) | ✅ 완료 (2026-10-20) | |
 | P2 | 기준선 | `p2-baseline.md` | | `baseline` |
 | P3 | 병목 1: 중복 신청 | `b1-duplicate.md` | | `b1-before`, `b1-after` |
 | P4 | 병목 2: 예산 초과 지급 | `b2-overspend.md` | | `b2-before`, `b2-after` |

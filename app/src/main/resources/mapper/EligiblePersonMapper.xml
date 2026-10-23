@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.songjunpyo.subsidy.infra.persistence.EligiblePersonMapper">
+
+    <!-- mybatis-batch: ExecutorType.BATCH로 한 건씩 쌓았다가 flushStatements()로 전송 -->
+    <insert id="insert">
+        INSERT INTO eligible_person
+            (person_id, ci_hash, name, birth_year, region_code, target_group, support_amount)
+        VALUES
+            (#{personId}, #{ciHash}, #{name}, #{birthYear}, #{regionCode}, #{targetGroup}, #{supportAmount})
+    </insert>
+
+    <!-- mybatis-foreach: 여러 건을 INSERT ... VALUES (...), (...) 한 문장으로 생성 -->
+    <insert id="insertAll">
+        INSERT INTO eligible_person
+            (person_id, ci_hash, name, birth_year, region_code, target_group, support_amount)
+        VALUES
+        <foreach collection="rows" item="r" separator=",">
+            (#{r.personId}, #{r.ciHash}, #{r.name}, #{r.birthYear}, #{r.regionCode}, #{r.targetGroup}, #{r.supportAmount})
+        </foreach>
+    </insert>
+</mapper>
