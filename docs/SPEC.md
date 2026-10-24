@@ -226,6 +226,48 @@ CREATE TABLE application (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
+### 테이블과 컬럼 설명
+
+V1을 적용하면 이 세 테이블 외에 Flyway가 적용 이력을 남기는 `flyway_schema_history`가 생긴다. 테이블 사이의 관계는 `person_id`, `budget_id` 값으로만 이어지고 FK는 없다.
+
+**`eligible_person`: 지원 대상자 명단.** P1 적재기가 `data/eligible_person.csv`(9.1)를 그대로 넣는다. 신청 처리 중에는 읽기만 한다.
+
+| 컬럼 | 의미 |
+| --- | --- |
+| `person_id` | 대상자 번호. 1부터 순서대로, 적재기가 직접 넣는다 (AUTO_INCREMENT 아님) |
+| `ci_hash` | 본인 식별값(CI)의 SHA-256 해시(hex 64자). 신청 시 이 값으로 대상자를 찾는다. 인덱스가 없어 조회마다 풀스캔이 된다 (병목 3, P5의 V3에서 해결) |
+| `name` | 가상 이름 |
+| `birth_year` | 출생연도 (1945~2004) |
+| `region_code` | 시도 코드 2자리 (9.1 지역 표) |
+| `target_group` | 대상군 (`TRUCK`, `FARM_FISH`, `LOW_INCOME`, `TAXI_BUS`) |
+| `support_amount` | 지원 금액(원). 대상군마다 정해진 값 (9.1 대상군 표) |
+| `created_at` | 적재 시각. DB 기본값으로 채운다 |
+
+**`support_budget`: 예산.** P2부터 쓴다. 기본은 전국 단일 예산 한 줄(`region_code` NULL)이고, 지역 분할 모드(P6, 3.6 `budgetMode: REGIONAL`)에서는 지역마다 한 줄이다.
+
+| 컬럼 | 의미 |
+| --- | --- |
+| `budget_id` | 예산 번호 |
+| `region_code` | 지역 예산이면 시도 코드, NULL이면 전국 단일 예산 |
+| `total_amount` | 총 예산(원). 권장값은 `summary.json`의 `recommended_total_budget` (9.3) |
+| `remaining_amount` | 남은 예산(원). 신청이 승인될 때마다 줄어든다. 동시 차감 시 초과 지급(병목 2)과 한 줄에 몰리는 락 경합(병목 4)이 여기서 생긴다 |
+| `version` | 낙관적 락 비교 실험용 (P6). 기준선에서는 쓰지 않는다 |
+| `updated_at` | 마지막 수정 시각 |
+
+**`application`: 신청 내역.** P2부터 쓴다. 승인된 신청 한 건이 한 줄이다.
+
+| 컬럼 | 의미 |
+| --- | --- |
+| `application_id` | 신청 번호 |
+| `person_id` | 신청한 대상자. UNIQUE가 없어 같은 사람이 여러 번 승인될 수 있다 (병목 1, P3의 V2에서 해결) |
+| `idempotency_key` | 클라이언트가 보낸 멱등키(UUID 36자). 같은 요청 재전송을 구분한다. 기준선은 헤더를 받기만 하고 무시한다 (3.2, P3부터 사용) |
+| `budget_id` | 차감한 예산 |
+| `amount` | 지급 금액(원). 신청 시점의 `support_amount` |
+| `status` | `APPROVED`(승인) → `PAID`(지급, P9) / `CANCELLED`(취소) |
+| `bank_code` | 은행 코드 3자리 |
+| `account_number_masked` | 마스킹한 계좌번호. 원문은 저장하지 않는다 |
+| `created_at`, `updated_at` | 신청 시각, 마지막 상태 변경 시각 |
+
 ### 이후 마이그레이션
 
 | 버전 | Phase | 내용 |
@@ -391,6 +433,23 @@ Grafana 대시보드(`infra/grafana/dashboards/subsidy.json`) 행 순서: 비즈
 5. `load-data`: `LOAD DATA LOCAL INFILE` (JDBC URL `allowLoadLocalInfile=true`, 서버 `local_infile=ON`)
 
 각 방식 전에 테이블을 비우고 소요 시간을 잰다. 각 방식은 100만 건으로 3회 측정해 중앙값을 기록한다. `jpa`는 먼저 10만 건으로 1회 재 보고, 100만 건 1회가 10분을 넘을 것으로 보이면 10만 건 3회로 기록하고 그렇게 했다고 명시한다 (100만 건으로 환산한 추정값은 쓰지 않는다).
+
+### 9.5 파일 위치와 테스트 데이터
+
+| 파일 | 크기 (기본 인자) | 쓰는 곳 |
+| --- | --- | --- |
+| `data/eligible_person.csv` | 100만 행, 약 101MB | P1 적재기 → DB `eligible_person` |
+| `data/participants.csv` | 12만 행, 약 11MB | P2부터 k6 입력. DB에는 넣지 않는다 |
+| `data/summary.json` | | 예산 설정(`/admin/reset`)과 결과 기록 |
+| `data/load-results.jsonl` | | 적재기 `--result` 출력. P1 측정 원자료 |
+
+`data/`는 커밋하지 않으므로 지워도 같은 seed로 다시 생성하면 바이트 단위로 같은 파일이 나온다.
+
+자동 테스트는 `data/`를 쓰지 않는다.
+
+- `test_generate.py`: 10만 행·2만 명으로 임시 폴더에 생성하고 끝나면 지운다
+- `EligiblePersonLoaderTest`: 2,500행 CSV를 JUnit `@TempDir`에 만들고 끝나면 지운다
+- Java 테스트의 DB는 Testcontainers가 띄우는 별도 MySQL이라 로컬 DB(`docker compose`)의 데이터에 영향이 없다
 
 ---
 
